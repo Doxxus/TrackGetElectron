@@ -1,15 +1,48 @@
 {
+  "name": "trackget",
+  "version": "1.0.0",
+  "description": "A desktop app for downloading SoundCloud playlists.",
+  "author": "Doxxus",
+  "main": "electron/main.js",
   "devDependencies": {
     "concurrently": "^9.2.1",
     "electron": "^40.4.1",
+    "electron-builder": "^26.7.0",
     "wait-on": "^9.0.4"
   },
   "scripts": {
     "react": "cd frontend && npm start",
     "electron": "wait-on http://localhost:3000 && electron electron/main.js",
-    "start": "concurrently \"npm run react\" \"npm run electron\""
+    "start": "concurrently \"npm run react\" \"npm run electron\"",
+    "react-build": "cd frontend && npm run build",
+    "electron-build": "electron-builder",
+    "dist": "npm run react-build && npm run electron-build"
   },
   "dependencies": {
     "youtube-dl-exec": "^3.1.1"
+  },
+  "build": {
+    "appId": "com.trackget.app",
+    "productName": "TrackGet",
+    "directories": {
+      "buildResources": "assets"
+    },
+    "files": [
+      "electron/**/*",
+      "backend/**/*",
+      "frontend/build/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/trackget.ico"
+    }
   }
 }

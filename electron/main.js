@@ -1,6 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("path");
-const downloader = require("../backend/downloader");
+const downloader = require(path.join(__dirname, "../backend/downloader.js"));
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -11,7 +11,11 @@ function createWindow() {
     },
   });
 
-  win.loadURL("http://localhost:3000");
+  // For Dev
+  //win.loadURL("http://localhost:3000");
+
+  // For Prod
+  win.loadFile(path.join(__dirname, "../frontend/build/index.html"));
 }
 
 app.whenReady().then(() => {
