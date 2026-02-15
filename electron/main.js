@@ -1,21 +1,27 @@
 const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("path");
-const downloader = require(path.join(__dirname, "../backend/downloader.js"));
+const downloader = require(path.join(__dirname, "..", "backend", "downloader.js"));
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 1600,
+    height: 900,
+    title: "Track Get",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
-    },
+      contextIsolation: true,
+      nodeIntegration: false
+    }
   });
 
-  // For Dev
-  //win.loadURL("http://localhost:3000");
+  win.setMenu(null);
+  const isDev = !app.isPackaged;
 
-  // For Prod
-  win.loadFile(path.join(__dirname, "../frontend/build/index.html"));
+  if (isDev) {
+    win.loadURL("http://localhost:3000");
+  } else {
+    win.loadFile(path.join(__dirname, "../frontend/build/index.html"));
+  }
 }
 
 app.whenReady().then(() => {

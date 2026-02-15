@@ -38,6 +38,16 @@
         "from": "backend",
         "to": "backend",
         "filter": ["**/*"]
+      },
+      {
+        "from": "frontend/build",
+        "to": "frontend/build",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "node_modules/youtube-dl-exec/bin",
+        "to": "yt-dlp",
+        "filter": ["**/*"]
       }
     ],
     "win": {
