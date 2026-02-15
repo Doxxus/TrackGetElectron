@@ -8,13 +8,15 @@ function startDownload(url, folder, onProgress) {
   const child = ytdl.exec(
     url,
     {
-      binary: ytDlpBinary,
       extractAudio: true,
       audioFormat: "mp3",
       audioQuality: 0,
-      output: path.join(folder, "%(playlist_index)s - %(title)s.%(ext)s"),
+      output: path.join(folder, "%(title)s.%(ext)s"),
     },
-    { stdio: "pipe" }
+    { 
+      stdio: "pipe",
+      bin: ytDlpBinary
+    }
   );
 
   child.stdout?.on("data", (data) => onProgress(data.toString()));
