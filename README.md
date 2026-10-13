@@ -6,9 +6,22 @@ A Windows desktop app for downloading SoundCloud playlists as MP3 files. Built w
 
 1. Paste a playlist URL.
 2. Choose a destination folder.
-3. Start the download. Progress output from yt-dlp streams into the UI.
+3. Choose how many tracks to download at once (1–8, default 3).
+4. Start the download. A progress panel appears beside the main card with one row per track; a fill sweeps across each track's title as it downloads, and failed tracks turn red. The console (toggle in the UI) shows the raw yt-dlp output, prefixed with the track number.
 
-Each track is extracted to MP3 (best quality) and saved as `<title>.<ext>` in the chosen folder.
+Each track is extracted to MP3 (best quality) and saved as `<title>.<ext>` in the chosen folder, with ID3 metadata (title, artist, etc.) and the cover art embedded.
+
+Downloads run as a pool of parallel yt-dlp processes, one per track. SoundCloud may rate-limit (HTTP 429) if you use too many; 3–4 is a safe range.
+
+## Changelog
+
+### 1.1.0
+
+- Per-track progress panel replaces the single progress bar.
+- Download multiple tracks simultaneously, with a configurable limit (max 8).
+- Embed metadata and cover art in each MP3.
+- Fix: packaged EXE failed immediately with `DONE:-4058` because the bundled yt-dlp path was ignored; it is now passed correctly.
+- Spawn failures are reported in the UI instead of causing an unhandled error.
 
 ## Project structure
 
@@ -16,8 +29,8 @@ Each track is extracted to MP3 (best quality) and saved as `<title>.<ext>` in th
 |------|---------|
 | `electron/main.js` | Electron main process: creates the window, handles IPC (`choose-folder`, `start-download`) |
 | `electron/preload.js` | Preload script exposing a safe API to the renderer (context isolation on) |
-| `backend/downloader.js` | Spawns yt-dlp and reports progress and completion (`DONE:<exit code>`) |
-| `frontend/` | React UI (Create React App, TypeScript, Tailwind) |
+| `backend/downloader.js` | Looks up the playlist's tracks, runs yt-dlp in parallel, and reports per-track progress (`TRACKS:`, `LINE:`, `TRACKDONE:`, `DONE:` messages) |
+| `frontend/` | React UI (Create React App, TypeScript, Tailwind), including the track progress panel |
 | `assets/` | App icons for packaging |
 | `dist/` | Installer output from electron-builder |
 
@@ -26,7 +39,7 @@ Each track is extracted to MP3 (best quality) and saved as `<title>.<ext>` in th
 - Node.js and npm
 - Windows (the installer target is NSIS; the packaged app uses `yt-dlp.exe`)
 - For development: `yt-dlp` available on your `PATH`
-- `ffmpeg` available on your `PATH` (required by yt-dlp for MP3 conversion)
+- `ffmpeg` available on your `PATH` (required by yt-dlp for MP3 conversion and for embedding metadata and cover art). It is not bundled, so the packaged app also needs it installed.
 
 ## Setup
 
