@@ -36,8 +36,8 @@ app.whenReady().then(() => {
     return result.filePaths[0];
   });
 
-  ipcMain.handle("start-download", async (event, { playlistUrl, folder }) => {
-    downloader.startDownload(playlistUrl, folder, (msg) => {
+  ipcMain.handle("start-download", async (event, { playlistUrl, folder, concurrency }) => {
+    downloader.startDownload(playlistUrl, folder, concurrency, (msg) => {
       event.sender.send("download-progress", msg);
     });
   });

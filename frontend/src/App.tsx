@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { parseProgress, parseTrackTitle } from "./utils";
 import { Toast } from "./Toast";
-import { ProgressBar } from "./ProgressBar";
+import { Track, TrackProgressPanel } from "./TrackProgressPanel";
+
+const MAX_CONCURRENCY = 8;
 
 export default function App() {
   const toggleDark = () => setDark(prev => !prev);
@@ -9,9 +11,9 @@ export default function App() {
   const [dark, setDark] = useState(false);
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState(""); 
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [currentTrack, setCurrentTrack] = useState<string | null>(null);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [concurrency, setConcurrency] = useState(3);
+  const [isRunning, setIsRunning] = useState(false);
   const [consoleLines, setConsoleLines] = useState<string[]>([]);
   const [showConsole, setShowConsole] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -24,7 +26,9 @@ export default function App() {
 
   async function startDownload() {
     if (!folder) return alert("Choose a folder first");
-    window.electronAPI.startDownload(url, folder);
+    setTracks([]);
+    setIsRunning(true);
+    window.electronAPI.startDownload(url, folder, concurrency);
   }
 
   useEffect(() => {
@@ -42,22 +46,61 @@ export default function App() {
   }, [dark]);
 
   useEffect(() => {
-    window.electronAPI.onProgress((msg) => {
-      setConsoleLines((prev) => [...prev, msg]);
+    function updateTrack(index: number, patch: (t: Track) => Partial<Track>) {
+      setTracks((prev) => prev.map((t, i) => (i === index ? { ...t, ...patch(t) } : t)));
+    }
 
-      const pct = parseProgress(msg);
+    function handleTrackLine(index: number, line: string) {
+      setConsoleLines((prev) => [...prev, `[${index + 1}] ${line}`]);
+
+      const destination = parseTrackTitle(line);
+      if (destination) {
+        const name = destination.trim().replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "");
+        updateTrack(index, (t) => ({
+          status: "downloading",
+          title: /^Track \d+$/.test(t.title) ? name : t.title,
+        }));
+        return;
+      }
+
+      const pct = parseProgress(line);
       if (pct !== null) {
-        setIsDownloading(true);
-        setProgress(pct);
+        updateTrack(index, () => ({ status: "downloading", progress: pct }));
+      }
+    }
+
+    window.electronAPI.onProgress((msg) => {
+      if (msg.startsWith("TRACKS:")) {
+        const titles: string[] = JSON.parse(msg.slice("TRACKS:".length));
+        setTracks(titles.map((title) => ({ title, progress: 0, status: "pending" })));
+        return;
       }
 
-      if (msg.startsWith("DONE")) {
-        setToast("Download complete");
-        setTimeout(() => {
-          setIsDownloading(false);
-          setProgress(0);
-        }, 1500);
+      const trackLine = msg.match(/^LINE:(\d+):([\s\S]*)$/);
+      if (trackLine) {
+        const index = parseInt(trackLine[1], 10);
+        trackLine[2].split(/\r?\n/).filter(Boolean).forEach((l) => handleTrackLine(index, l));
+        return;
       }
+
+      const trackDone = msg.match(/^TRACKDONE:(\d+):(-?\d+)$/);
+      if (trackDone) {
+        const ok = trackDone[2] === "0";
+        updateTrack(parseInt(trackDone[1], 10), (t) => ({
+          status: ok ? "done" : "error",
+          progress: ok ? 100 : t.progress,
+        }));
+        return;
+      }
+
+      if (msg.startsWith("DONE:")) {
+        const failed = parseInt(msg.slice("DONE:".length), 10);
+        setIsRunning(false);
+        setToast(failed === 0 ? "Download complete" : `Finished with ${failed} failed track(s)`);
+        return;
+      }
+
+      setConsoleLines((prev) => [...prev, msg]);
     });
   }, []);
 
@@ -69,7 +112,7 @@ export default function App() {
   }, [toast]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-100 to-purple-500 dark:from-deepPurple-950 dark:to-deepPurple-700 flex items-center justify-center p-6 relative">
+    <div className="min-h-screen bg-gradient-to-br from-purple-100 to-purple-500 dark:from-deepPurple-950 dark:to-deepPurple-700 flex items-center justify-center gap-6 p-6 relative">
       <button
         onClick={toggleDark}
         className="absolute top-4 right-4 px-3 py-2 rounded-lg bg-purple-200 dark:bg-deepPurple-500 text-deepPurple-600 dark:text-purple-200 shadow hover:scale-105 transition">
@@ -96,8 +139,21 @@ export default function App() {
             className="w-full p-4 rounded-xl border border-purple-300 dark:border-deepPurple-600 bg-white/80 dark:bg-deepPurple-800/60 text-deepPurple-900 dark:text-deepPurple-100 shadow-sm focus:ring-4 focus:ring-purple-300 focus:border-purple-500 transition"
           />
 
+          <label className="flex items-center justify-between text-purple-800 dark:text-purple-200 font-medium">
+            Simultaneous downloads
+            <input
+              type="number"
+              min={1}
+              max={MAX_CONCURRENCY}
+              value={concurrency}
+              disabled={isRunning}
+              onChange={e => setConcurrency(Math.min(MAX_CONCURRENCY, Math.max(1, parseInt(e.target.value, 10) || 1)))}
+              className="w-20 p-2 rounded-lg border border-purple-300 dark:border-deepPurple-600 bg-white/80 dark:bg-deepPurple-800/60 text-deepPurple-900 dark:text-deepPurple-100 text-center"
+            />
+          </label>
+
           <button onClick={chooseFolder} className="w-full py-4 rounded-xl bg-purple-500 hover:bg-purple-600 text-white font-semibold shadow-md hover:shadow-lg active:scale-[0.98] transition-all">Choose Folder</button>
-          <button onClick={startDownload} className="w-full py-4 rounded-xl bg-purple-500 hover:bg-purple-600 text-white font-semibold shadow-md hover:shadow-lg active:scale-[0.98] transition-all">Download Playlist</button>
+          <button onClick={startDownload} disabled={isRunning} className="w-full py-4 rounded-xl bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white font-semibold shadow-md hover:shadow-lg active:scale-[0.98] transition-all">{isRunning ? "Downloading..." : "Download Playlist"}</button>
 
         </div>
 
@@ -106,16 +162,6 @@ export default function App() {
             {status}
           </p>
         )}
-
-        {currentTrack && (
-          <p className="text-center text-gray-700 dark:text-gray-300 mb-2">
-            Downloading: {currentTrack}
-          </p>
-        )}
-
-        <div className={`fade ${isDownloading ? "opacity-100" : "opacity-0"}`}>
-          <ProgressBar progress={progress} />
-        </div>
 
         <div className="mt-6">
           <button
@@ -134,6 +180,8 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {tracks.length > 0 && <TrackProgressPanel tracks={tracks} />}
     </div>
   );
 }
