@@ -83,12 +83,13 @@ export default function App() {
         return;
       }
 
-      const trackDone = msg.match(/^TRACKDONE:(\d+):(-?\d+)$/);
+      const trackDone = msg.match(/^TRACKDONE:(\d+):(-?\d+)(?::([\s\S]*))?$/);
       if (trackDone) {
         const ok = trackDone[2] === "0";
         updateTrack(parseInt(trackDone[1], 10), (t) => ({
           status: ok ? "done" : "error",
           progress: ok ? 100 : t.progress,
+          error: ok ? undefined : trackDone[3] || "Download failed",
         }));
         return;
       }

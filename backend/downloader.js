@@ -4,17 +4,52 @@ const ytdl = require("youtube-dl-exec");
 
 const MAX_CONCURRENCY = 8;
 
-async function fetchTracks(yt, url) {
+function formatTitle(e) {
+  const artist = (Array.isArray(e.artists) && e.artists[0]) || e.artist || e.uploader || e.channel;
+  if (!e.title) return null;
+  return artist ? `${artist} - ${e.title}` : e.title;
+}
+
+// Flat playlist entries often lack titles, so look those tracks up individually.
+async function resolveTitle(yt, track) {
   try {
-    const info = await yt(url, { flatPlaylist: true, dumpSingleJson: true });
+    const info = await yt(track.url, { dumpSingleJson: true, noPlaylist: true, ignoreNoFormatsError: true });
+    return formatTitle(info);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchTracks(yt, url, onError) {
+  try {
+    const info = await yt(url, {
+      flatPlaylist: true,
+      dumpSingleJson: true,
+      ignoreErrors: true,
+      // lets metadata (title/artist) be read even when no downloadable format exists, e.g. DRM tracks
+      ignoreNoFormatsError: true,
+    });
     const entries = Array.isArray(info.entries) ? info.entries : [info];
-    return entries
+    const tracks = entries
       .map((e, i) => ({
-        title: e.title || `Track ${i + 1}`,
+        title: formatTitle(e),
+        fallback: `Track ${i + 1}`,
         url: e.url || e.webpage_url || (entries === info.entries ? null : url),
       }))
       .filter((t) => t.url);
-  } catch {
+
+    let next = 0;
+    const lookupWorker = async () => {
+      while (next < tracks.length) {
+        const t = tracks[next++];
+        if (!t.title) t.title = await resolveTitle(yt, t);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, tracks.length) }, lookupWorker));
+
+    return tracks.map((t) => ({ title: t.title || t.fallback, url: t.url }));
+  } catch (err) {
+    onError(`Playlist lookup failed: ${err.stderr || err.message}`);
     return [];
   }
 }
@@ -38,14 +73,21 @@ function downloadOne(yt, trackUrl, folder, emit) {
     );
 
     let settled = false;
+    let reason = "";
     const finish = (code) => {
       if (settled) return;
       settled = true;
-      resolve(code);
+      resolve({ code, reason: code === 0 ? "" : reason });
     };
 
-    child.stdout?.on("data", (data) => emit(data.toString()));
-    child.stderr?.on("data", (data) => emit(data.toString()));
+    const handleOutput = (data) => {
+      const text = data.toString();
+      if (/DRM protected/i.test(text)) reason = "DRM-protected, can't download";
+      emit(text);
+    };
+
+    child.stdout?.on("data", handleOutput);
+    child.stderr?.on("data", handleOutput);
     child.catch((err) => {
       emit(`ERROR: ${err.message}`);
       finish(-1);
@@ -54,13 +96,12 @@ function downloadOne(yt, trackUrl, folder, emit) {
   });
 }
 
-// Message protocol: TRACKS:<json>, LINE:<index>:<text>, TRACKDONE:<index>:<code>, DONE:<failedCount>
+// Message protocol: TRACKS:<json>, LINE:<index>:<text>, TRACKDONE:<index>:<code>[:<reason>], DONE:<failedCount>
 async function startDownload(url, folder, concurrency, onProgress) {
-  const ytDlpBinary = app.isPackaged ? path.join(process.resourcesPath, "yt-dlp", "yt-dlp.exe") : "yt-dlp";
-  const yt = ytdl.create(ytDlpBinary);
+  const yt = app.isPackaged ? ytdl.create(path.join(process.resourcesPath, "yt-dlp", "yt-dlp.exe")) : ytdl;
   const limit = Math.min(Math.max(parseInt(concurrency, 10) || 1, 1), MAX_CONCURRENCY);
 
-  let tracks = await fetchTracks(yt, url);
+  let tracks = await fetchTracks(yt, url, (text) => onProgress(`ERROR:${text}`));
   if (tracks.length === 0) tracks = [{ title: "Track 1", url }];
   onProgress(`TRACKS:${JSON.stringify(tracks.map((t) => t.title))}`);
 
@@ -70,9 +111,9 @@ async function startDownload(url, folder, concurrency, onProgress) {
   async function worker() {
     while (next < tracks.length) {
       const i = next++;
-      const code = await downloadOne(yt, tracks[i].url, folder, (text) => onProgress(`LINE:${i}:${text}`));
+      const { code, reason } = await downloadOne(yt, tracks[i].url, folder, (text) => onProgress(`LINE:${i}:${text}`));
       if (code !== 0) failed++;
-      onProgress(`TRACKDONE:${i}:${code}`);
+      onProgress(`TRACKDONE:${i}:${code}${reason ? `:${reason}` : ""}`);
     }
   }
 

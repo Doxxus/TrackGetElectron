@@ -4,6 +4,7 @@ export interface Track {
   title: string;
   progress: number;
   status: TrackStatus;
+  error?: string;
 }
 
 export function TrackProgressPanel({ tracks }: { tracks: Track[] }) {
@@ -24,8 +25,14 @@ export function TrackProgressPanel({ tracks }: { tracks: Track[] }) {
               }`}
               style={{ width: `${t.status === "done" ? 100 : t.progress}%` }}
             />
-            <div className="relative px-3 py-2 text-sm text-gray-900 dark:text-gray-100 truncate" title={t.title}>
+            <div
+              className="relative px-3 py-2 text-sm text-gray-900 dark:text-gray-100 truncate"
+              title={t.error ? `${t.title}: ${t.error}` : t.title}
+            >
               {t.title}
+              {t.status === "error" && (
+                <span className="ml-2 font-semibold text-red-700 dark:text-red-200">— {t.error}</span>
+              )}
             </div>
           </div>
         ))}
