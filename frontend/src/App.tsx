@@ -18,6 +18,11 @@ export default function App() {
   const [showConsole, setShowConsole] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    window.electronAPI.getVersion().then(setVersion);
+  }, []);
 
   async function chooseFolder() {
     const selected = await window.electronAPI.chooseFolder();
@@ -183,6 +188,11 @@ export default function App() {
       </div>
 
       {tracks.length > 0 && <TrackProgressPanel tracks={tracks} />}
+      {version && (
+        <div className="absolute bottom-3 left-4 text-xs text-purple-900/70 dark:text-purple-200/70">
+          TrackGet v{version}
+        </div>
+      )}
     </div>
   );
 }

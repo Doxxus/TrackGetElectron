@@ -27,6 +27,8 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
+  ipcMain.handle("get-version", () => require("../package.json").version);
+
   ipcMain.handle("choose-folder", async () => {
     const result = await dialog.showOpenDialog({
       properties: ["openDirectory"],
